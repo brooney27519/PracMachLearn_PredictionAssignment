@@ -1,0 +1,119 @@
+---
+title: "Practical Machine Learning Course - Prediction Assignment"
+author: "Brian Rooney"
+date: "December 1, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret,warn.conflicts = TRUE, quietly = FALSE)
+library(randomForest,warn.conflicts = TRUE, quietly = FALSE)
+```
+
+## Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit, it is now possible to collect a large amount of data about personal activity relatively inexpensively.  This analysis will use data collected from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to quantify how well they do specific exercices.  The data comes from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har.
+
+Six young health participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways, with one set of 10 repetitions as follows:
+1)	exactly according to the specification (Class A)
+2)	throwing the elbows to the front (Class B)
+3)	lifting the dumbbell only halfway (Class C)
+4)	lowering the dumbbell only halfway (Class D)
+5)	throwing the hips to the front (Class E).
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. Here, a model will be created that can predict the Class of the exercise performed based on the data.
+
+## Raw Data
+
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Load the Data
+
+```{r LoadData,cache=TRUE}
+filename_train <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+train <- read.table(file = filename_train, header = TRUE, sep = ",", quote = "\"'",
+          dec = ".",  na.strings = c("",NA),  fill = TRUE,  comment.char = "")
+
+filename_test <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+test <- read.table(file = filename_test, header = TRUE, sep = ",", quote = "\"'",
+          dec = ".",  na.strings = c("",NA),  fill = TRUE,  comment.char = "")
+```
+
+## Tidy the Data
+
+The data contains 19622 observations for 160 variables.  Many of columns contain NA which need to be removed. Additionally, the data contains non-numeric variables or variables that are not useful for modeling or predicting outcomes.
+
+```{r TidyData}
+## Remove NAs
+clean_train <- train[,colSums(is.na(train)) == 0]
+clean_test <- test[,colSums(is.na(test)) == 0]
+
+## Remove non-numeric and time variables
+trainSamples <- clean_train[,-c(1:7)]
+testSamples <- clean_test[,-c(1:7,60)]
+```
+
+## Create training and testing sets
+
+```{r TrainTestSets}
+inTrain <- createDataPartition(y=trainSamples$classe,p = 0.7,list = FALSE)
+training <- trainSamples[inTrain,]
+testing <- trainSamples[-inTrain,]
+```
+
+## Test Models
+
+Next, a few models will be trained to select the best one and the selected models will
+
+```{r TestModels,cache=TRUE}
+set.seed(3434)
+
+ldaFit <- train(classe ~ ., data = training, method = "lda")
+accuracy_ldaFit <- confusionMatrix(predict(ldaFit,testing),testing$classe)$overall[1]
+
+rpartFit <- train(classe ~ ., data = training, method = "rpart")
+accuracy_rpartFit <- confusionMatrix(predict(rpartFit,testing),testing$classe)$overall[1]
+```
+
+The accuracy of the lda model is `r accuracy_ldaFit` and the accuracy of the rpart or CART model is `r accuracy_rpartFit`.
+These models appear to be poor, so another type of model with be tested to see if we can get better accuracy.
+
+### Try Random Forest Model
+
+A Random Forest model will be attempted and we will start with 200 trees to see if this many trees is sufficient to achieve the minimal amount of error.
+
+```{r TestRandomForest,cache=TRUE}
+test_rf_Fit <- randomForest(classe ~ ., training, ntree=200, importance=T)
+```
+
+See Appendix for a plot of the Error vs Number of Trees for the Random Forest model. The plot shows that at least 50 trees are needed to minimize the error in the model.  Next, the final Random Forest model is created and its accuracy is determined.
+
+```{r RandomForestModel,cache=TRUE}
+set.seed(3434)
+rfFit <- train(classe ~ ., data = training, method = "rf",ntree=50)
+accuracy_rfFit <- confusionMatrix(predict(rfFit,testing),testing$classe)$overall[1]
+```
+
+The accuracy of the rf model is `r accuracy_rfFit` which is excellent so the rf model will be used to predict the outcome of the classe variable.
+
+## Predict outcome (classe)
+
+Predicted values for the outcome (the 'classe' variable) using the testSamples are shown below.
+
+```{r PredictOutcome}
+predict_classe <- predict(rfFit,testSamples)
+output <- data.frame(predict_classe)
+output
+```
+
+## Appendix
+
+```{r plotRF_Errors}
+# plot Errors vs Number of Trees
+plot(test_rf_Fit, main = "Plot of rf Model with 200 trees")
+```
